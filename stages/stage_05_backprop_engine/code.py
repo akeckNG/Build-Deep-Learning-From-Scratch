@@ -29,28 +29,42 @@ class Value(Stage4_Value):
     """
 
     # No operator overrides needed: stage_01's `_make` builds every result via
-    # `type(self)(...)`, so the inherited `+`/`*`/`**` already return THIS class
-    # and the new unary ops below chain on any intermediate.
+    # `type(self)(...)`, so inherited `+`/`*`/`**` already return THIS class and
+    # the new unary ops below chain on any intermediate.
 
     # New primitive ops. Each builds a Value and installs a _backward closure
     # that accumulates into inputs with += (never =).
 
     def tanh(self) -> "Value":
         """Return tanh(self). Local rule: dt/dx = 1 - tanh(x)**2."""
-        # TODO: implement the forward + backward pass for tanh
-        raise NotImplementedError
+        out = self._make(math.tanh(self.data), (self,), "tanh")
+
+        def _backward():
+            self.grad += out.grad * (1 - math.tanh(self.data)**2)
+
+        out._backward = _backward
+        return out
 
     def exp(self) -> "Value":
         """Return exp(self). Local rule: de/dx = exp(x)."""
-        # TODO: implement the forward + backward pass for exp
-        raise NotImplementedError
+        out = self._make(math.exp(self.data), (self,), "exp")
+
+        def _backward():
+            self.grad += out.grad * math.exp(self.data)
+
+        out._backward = _backward
+        return out
 
     def relu(self) -> "Value":
         """Return ReLU(self) = max(0, self). Local rule: dr/dx = 1 if x > 0 else 0."""
-        # TODO: implement the forward + backward pass for relu
-        raise NotImplementedError
+        out = self._make(max(self.data, 0.0), (self,), "relu")
+
+        def _backward():
+            self.grad += out.grad * (1.0 if self.data > 0.0 else 0.0)
+
+        out._backward = _backward
+        return out
 
     def __repr__(self) -> str:
         """Return e.g. ``Value(data=2.0, grad=4.0)``."""
-        # TODO: implement the grad-aware repr
-        raise NotImplementedError
+        return f"Value(data={self.data}, grad={self.grad})"
