@@ -10,8 +10,8 @@ from typing import Iterable, List
 
 import numpy as np
 
-# Tensor (stage_08 engine, imported via its latest extension in stage_12); the
-# optimizer only reads .grad / writes .data.
+# Tensor (stage_08 engine, imported via its latest extension in stage_12);
+# the optimizer only reads .grad / writes .data.
 from dlfs import stage_import
 
 Stage12_Tensor = stage_import("stage_12", "Tensor")
@@ -23,13 +23,12 @@ class Optimizer:
     """Base class for optimizers: owns a list of parameter Tensors and updates them in place."""
 
     def __init__(self, params: Iterable["Stage12_Tensor"]) -> None:
-        # TODO: materialize `params` into a concrete list (not a one-shot iterable).
-        raise NotImplementedError("Optimizer.__init__")
+        self.params = list(params)
 
     def zero_grad(self) -> None:
         """Reset every parameter's .grad to zeros (call before each backward pass)."""
-        # TODO: implement gradient reset.
-        raise NotImplementedError("Optimizer.zero_grad")
+        for p in self.params:
+            p.zero_grad()
 
     def step(self) -> None:
         """Apply one optimization update to ``self.params`` (subclass-defined)."""
@@ -40,14 +39,15 @@ class SGD(Optimizer):
     """Plain stochastic gradient descent: p.data -= lr * p.grad."""
 
     def __init__(self, params: Iterable["Stage12_Tensor"], lr: float = 0.01) -> None:
-        # TODO: validate lr > 0, call super().__init__, store self.lr.
-        raise NotImplementedError("SGD.__init__")
+        super(SGD, self).__init__(params)
+        assert lr > 0.0
+        self.lr = lr
 
     def step(self) -> None:
         """One SGD step: in-place ``p.data -= self.lr * p.grad`` (skip params with grad None)."""
-        # TODO: implement the in-place SGD update.
-        raise NotImplementedError("SGD.step")
+        for p in self.params:
+            if p.grad is not None:
+                p.data -= self.lr * p.grad
 
     def __repr__(self) -> str:
-        # TODO: e.g. f"SGD(lr={self.lr}, n_params={len(self.params)})"
-        raise NotImplementedError("SGD.__repr__")
+        return f"SGD(lr={self.lr}, n_params={len(self.params)})"
