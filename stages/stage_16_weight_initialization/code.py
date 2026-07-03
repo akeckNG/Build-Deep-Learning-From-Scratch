@@ -27,28 +27,28 @@ def xavier_uniform(
     n_in: int, n_out: int, *, gain: float = 1.0, seed: Optional[int] = None
 ) -> np.ndarray:
     """Xavier/Glorot uniform init: U[-a, a], a = gain*sqrt(6/(n_in+n_out)). Returns (n_in, n_out)."""
-    # TODO: sample U[-a, a] so Var(W) = gain**2 * 2 / (n_in + n_out).
-    raise NotImplementedError("xavier_uniform")
+    a = gain * np.sqrt(6.0 / (n_in + n_out))
+    return np.random.default_rng(seed).uniform(-a, a, size=(n_in, n_out))
 
 
 def xavier_normal(
     n_in: int, n_out: int, *, gain: float = 1.0, seed: Optional[int] = None
 ) -> np.ndarray:
     """Xavier/Glorot normal init: N(0, std**2), std = gain*sqrt(2/(n_in+n_out)). Returns (n_in, n_out)."""
-    # TODO: sample N(0, std**2) with std = gain*sqrt(2/(n_in+n_out)).
-    raise NotImplementedError("xavier_normal")
+    std = gain * np.sqrt(2.0 / (n_in + n_out))
+    return np.random.default_rng(seed).normal(0.0, std, size=(n_in, n_out))
 
 
 def he_normal(n_in: int, n_out: int, *, seed: Optional[int] = None) -> np.ndarray:
     """He/Kaiming normal init for ReLU nets: N(0, 2/n_in). Returns (n_in, n_out)."""
-    # TODO: sample N(0, 2/n_in) -- numerator 2 accounts for ReLU halving variance.
-    raise NotImplementedError("he_normal")
+    std = np.sqrt(2.0 / n_in)
+    return np.random.default_rng(seed).normal(0.0, std, size=(n_in, n_out))
 
 
 def he_uniform(n_in: int, n_out: int, *, seed: Optional[int] = None) -> np.ndarray:
     """He/Kaiming uniform init for ReLU nets: U[-a, a], a = sqrt(6/n_in). Returns (n_in, n_out)."""
-    # TODO: sample U[-a, a] so Var(W) = 2 / n_in.
-    raise NotImplementedError("he_uniform")
+    a = np.sqrt(6.0 / n_in)
+    return np.random.default_rng(seed).uniform(-a, a, size=(n_in, n_out))
 
 
 def init_dense(layer, W: np.ndarray, b: Optional[np.ndarray] = None) -> None:
@@ -59,9 +59,22 @@ def init_dense(layer, W: np.ndarray, b: Optional[np.ndarray] = None) -> None:
     accumulating into the same ``.grad`` buffers. Reset those ``.grad``s to
     zeros of the new shape. Raise ``ValueError`` on any shape mismatch.
     """
-    # TODO: validate shapes; overwrite layer.W.data (and layer.b.data if given);
-    #       reset the matching .grad buffers to zeros. Never rebind layer.W/layer.b.
-    raise NotImplementedError("init_dense")
+    W = np.asarray(W, dtype=np.float64)
+    current = np.asarray(layer.W.data)
+    if W.shape != current.shape:
+        raise ValueError(f"init_dense: W shape {W.shape} != layer.W shape {current.shape}")
+    layer.W.data = W.copy()
+    layer.W.grad = np.zeros_like(W)
+
+    if b is not None:
+        if layer.b is None:
+            raise ValueError("init_dense: layer has no bias but b was given")
+        b = np.asarray(b, dtype=np.float64)
+        target = np.asarray(layer.b.data)
+        if b.size != target.size:
+            raise ValueError(f"init_dense: b size {b.size} != layer.b size {target.size}")
+        layer.b.data = b.reshape(target.shape).copy()
+        layer.b.grad = np.zeros_like(target)
 
 
 def forward_activation_stats(
@@ -89,7 +102,34 @@ def forward_activation_stats(
     matter: matched init keeps "std" stable across depth; a tiny init collapses
     it toward 0; a large one saturates tanh / kills ReLUs.
     """
-    # TODO: build + init the stack, run the forward pass layer by layer
-    #       (activation applied on the Tensor output), and collect the stats
-    #       from each layer's post-activation .data.
-    raise NotImplementedError("forward_activation_stats")
+    if activation not in ("tanh", "relu", "none"):
+        raise ValueError(f"unknown activation {activation!r}")
+
+    rng = np.random.default_rng(seed)
+    layers = []
+    for k in range(len(sizes) - 1):
+        n_in, n_out = sizes[k], sizes[k + 1]
+        layer = Dense(n_in, n_out, bias=True, seed=None if seed is None else seed + k)
+        init_dense(layer, init_fn(n_in, n_out), b=np.zeros(n_out))
+        layers.append(layer)
+
+    h = Tensor(rng.standard_normal((n_samples, sizes[0])))
+    stats: List[Dict[str, float]] = []
+    for layer in layers:
+        z = layer(h)
+        if activation == "tanh":
+            h = z.tanh()
+        elif activation == "relu":
+            h = z.relu()
+        else:
+            h = z
+        d = np.asarray(h.data)
+        stats.append(
+            {
+                "mean": float(d.mean()),
+                "std": float(d.std()),
+                "saturated": float((np.abs(d) > 0.98).mean()),
+                "dead": float((d == 0.0).mean()),
+            }
+        )
+    return stats
