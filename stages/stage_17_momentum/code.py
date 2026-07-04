@@ -40,9 +40,10 @@ class SGDMomentum(Stage14_SGD):
     ) -> None:
         # Defer params/lr setup to the stage_14 SGD ctor (single source of truth).
         super().__init__(params, lr)
-        # TODO: validate 0 <= beta < 1, store beta/nesterov, allocate one
-        # zeros velocity buffer per param (aligned with self.params).
-        raise NotImplementedError("SGDMomentum.__init__")
+        assert beta >= 0 and beta < 1
+        self.beta = beta
+        self.nesterov = nesterov
+        self.velocities = [np.zeros_like(p.data) for p in self.params]
 
     def step(self) -> None:
         """Apply one momentum update to every parameter in place.
@@ -50,17 +51,20 @@ class SGDMomentum(Stage14_SGD):
         Velocity buffers persist across calls (write updated v back into
         self.velocities). Does NOT zero grads (that's the inherited zero_grad).
         """
-        # TODO: implement the heavy-ball / Nesterov update.
-        raise NotImplementedError("SGDMomentum.step")
+        for i, p in enumerate(self.params):
+            if p.grad is not None:
+                self.velocities[i] = self.beta * self.velocities[i] + p.grad
+                if self.nesterov:
+                    p.data -= self.lr * (p.grad + self.beta * self.velocities[i])
+                else:
+                    p.data -= self.lr * self.velocities[i]
 
     def reset(self) -> None:
         """Zero all velocity buffers; leaves p.data and p.grad untouched."""
-        # TODO: reset every velocity buffer to zeros.
-        raise NotImplementedError("SGDMomentum.reset")
+        self.velocities = [np.zeros_like(p.data) for p in self.params]
 
     def __repr__(self) -> str:
-        # TODO: summarize lr, beta, nesterov.
-        raise NotImplementedError("SGDMomentum.__repr__")
+        return f"SGDMomentum({self.lr=}, {self.beta=}, {self.nesterov=})"
 
 
 # Backwards-compatible public alias used by the tests.
