@@ -49,8 +49,10 @@ class RMSProp(Stage14_Optimizer):
 
     def step(self) -> None:
         """Apply one in-place RMSProp update to every parameter; leave p.grad untouched."""
-        # TODO: implement the RMSProp update (update self.v, then p.data).
-        raise NotImplementedError("RMSProp.step")
+        for i, p in enumerate(self.params):
+            g = p.grad + self.weight_decay * p.data
+            self.v[i] = self.beta * self.v[i] + (1.0 - self.beta) * (g ** 2)
+            p.data = p.data - self.lr * g / (self.v[i] ** 0.5 + self.eps)
 
 
 class Adam(Stage14_Optimizer):
@@ -79,14 +81,22 @@ class Adam(Stage14_Optimizer):
         self.v = [np.zeros_like(p.data) for p in self.params]
 
     def _effective_grad(self, p):
-        """The gradient the update uses (coupled decay folded in). Hook overridden by AdamW."""
-        # TODO: return the effective gradient including coupled weight decay.
-        raise NotImplementedError("Adam._effective_grad")
+        return p.grad + self.weight_decay * p.data
 
     def step(self) -> None:
         """Apply one in-place Adam update (increment t, update m/v with bias correction, step p.data)."""
-        # TODO: implement the Adam update (mutate self.m / self.v / p.data); leave p.grad.
-        raise NotImplementedError("Adam.step")
+        self.t += 1
+        for i, p in enumerate(self.params):
+            g = self._effective_grad(p)
+            # First moment (mean) estimate
+            self.m[i] = self.beta1 * self.m[i] + (1.0 - self.beta1) * g
+            # Second moment (variance) estimate
+            self.v[i] = self.beta2 * self.v[i] + (1.0 - self.beta2) * (g ** 2)
+            # Bias correction
+            m_hat = self.m[i] / (1 - self.beta1 ** self.t)
+            v_hat = self.v[i] / (1 - self.beta2 ** self.t)
+
+            p.data = p.data - self.lr * (m_hat / (v_hat ** 0.5 + self.eps))
 
 
 class AdamW(Adam):
@@ -97,10 +107,10 @@ class AdamW(Adam):
 
     def _effective_grad(self, p):
         """AdamW's adaptive update uses the raw gradient only (decay is decoupled)."""
-        # TODO: return the raw gradient (no weight decay folded in).
-        raise NotImplementedError("AdamW._effective_grad")
+        return p.grad
 
     def step(self) -> None:
         """Run the standard Adam update, then apply decoupled weight decay to p.data."""
-        # TODO: super().step() then decoupled decay on p.data. Document decay ordering.
-        raise NotImplementedError("AdamW.step")
+        super(AdamW, self).step()
+        for p in self.params:
+            p.data -= self.lr * p.data * self.weight_decay
