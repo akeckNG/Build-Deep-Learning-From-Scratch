@@ -43,9 +43,31 @@ def iterate_minibatches(
 ) -> Iterator[Tuple[np.ndarray, np.ndarray]]:
     """Generator yielding ``(X_b, y_b)`` mini-batches partitioning the dataset.
     X (N, n_in), y (N,) or (N, 1); ValueError if lengths differ or batch_size not in [1, N]."""
-    # TODO: yield consecutive batches over a (optionally shuffled) permutation.
-    raise NotImplementedError("iterate_minibatches")
+    X_arr = np.asarray(X.data if isinstance(X, Tensor) else X, dtype=np.float64)
+    y_arr = np.asarray(y.data if isinstance(y, Tensor) else y, dtype=np.float64)
+    n_samples = X_arr.shape[0]
 
+    assert n_samples == y_arr.shape[0], "X and y must have the same number of samples."
+    assert 1 <= batch_size <= n_samples, "batch_size must be between 1 and the number of samples."
+
+    indices = np.arange(n_samples)
+
+    if shuffle:
+        rng = np.random.default_rng(seed)
+        rng.shuffle(indices)
+
+    for start_idx in range(0, n_samples, batch_size):
+        end_idx = start_idx + batch_size
+
+        # Check if we should drop the final incomplete batch
+        if drop_last and end_idx > n_samples:
+            break
+
+        batch_indices = indices[start_idx:end_idx]
+
+        # Slicing with an index array returns a copy, which is
+        # necessary to provide contiguous/independent batches.
+        yield X_arr[batch_indices], y_arr[batch_indices]
 
 def train_minibatch(
     model: "Stage11_MLP",
@@ -62,8 +84,33 @@ def train_minibatch(
 ) -> Dict[str, object]:
     """Train ``model`` with mini-batch gradient descent; return loss history
     ``{"batch_loss", "epoch_loss", "steps"}`` (epoch_loss = size-weighted mean)."""
-    # TODO: loop epochs x mini-batches running the canonical train step per batch.
-    raise NotImplementedError("train_minibatch")
+    if optimizer is None:
+        optimizer = SGD(model.parameters(), lr=lr)
+
+    batch_loss = []
+    epoch_loss = []
+    steps = 0
+
+    for _ in range(epochs):
+        losses = []
+        sizes = []
+        for X_b, y_b in iterate_minibatches(
+            X, y, batch_size=batch_size, shuffle=shuffle, seed=seed, drop_last=drop_last
+        ):
+            pred = model(Tensor(X_b))
+            loss = mse_loss(pred, y_b.reshape(-1, 1))
+            batch_loss.append(float(loss.data))
+            losses.append(float(loss.data))
+            sizes.append(X_b.shape[0])
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+            steps += 1
+
+        # Size-weighted mean so a ragged last batch doesn't skew the epoch loss.
+        epoch_loss.append(float(np.average(losses, weights=sizes)))
+
+    return {"batch_loss": batch_loss, "epoch_loss": epoch_loss, "steps": steps}
 
 
 def gradient_noise(
@@ -77,20 +124,59 @@ def gradient_noise(
 ) -> float:
     """Estimate the variance of the mini-batch gradient at a fixed model: mean over
     coordinates of the per-coordinate variance (should fall like sigma**2/batch_size)."""
-    # TODO: collect per-batch flattened grads, then mean of per-coordinate var.
-    raise NotImplementedError("gradient_noise")
+    params = model.parameters()
+    grads = []
+    epoch = 0
+
+    # Cycle fresh (re-seeded) epochs until n_batches gradients are collected.
+    while len(grads) < n_batches:
+        epoch_seed = None if seed is None else seed + epoch
+        for X_b, y_b in iterate_minibatches(
+            X, y, batch_size=batch_size, shuffle=True, seed=epoch_seed
+        ):
+            if len(grads) >= n_batches:
+                break
+            for p in params:
+                p.grad = np.zeros_like(p.data)
+            loss = mse_loss(model(Tensor(X_b)), y_b.reshape(-1, 1))
+            loss.backward()
+            grads.append(np.concatenate([np.asarray(p.grad).ravel() for p in params]))
+        epoch += 1
+
+    # Leave the model untouched: no optimizer step ran; clear the scratch grads.
+    for p in params:
+        p.grad = np.zeros_like(p.data)
+
+    return float(np.stack(grads).var(axis=0).mean())
 
 
 def epochs_to_threshold(history: Sequence[float], threshold: float) -> int:
     """Return the 1-based epoch index where loss first reaches ``threshold``, else -1."""
-    # TODO: scan history for the first value <= threshold.
-    raise NotImplementedError("epochs_to_threshold")
-
+    for i, loss in enumerate(history):
+        if loss <= threshold:
+            return i + 1  # 1-based index
+    return -1
 
 def plot_batch_comparison(
     histories: Mapping[str, Sequence[float]],
     path: Optional[str] = None,
 ):
     """Plot several labelled epoch-loss curves on shared axes; save to ``path`` or return fig."""
-    # TODO: plot one curve per history entry; save if path given, else return fig.
-    raise NotImplementedError("plot_batch_comparison")
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    for label, history in histories.items():
+        ax.plot(range(1, len(history) + 1), history, label=label, marker='o', markersize=3)
+    
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Loss")
+    ax.set_title("Training Loss Comparison")
+    ax.legend()
+    ax.grid(True, linestyle='--', alpha=0.7)
+    
+    if path:
+        plt.savefig(path)
+        plt.close(fig)
+    else:
+        return fig
