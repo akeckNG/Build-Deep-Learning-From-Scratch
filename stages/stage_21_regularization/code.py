@@ -31,22 +31,19 @@ cross_entropy_loss = Stage13_cross_entropy_loss
 def _abs(t: "Stage12_Tensor") -> "Stage12_Tensor":
     """Elementwise |t| via the relu identity |t| = relu(t) + relu(-t), so the
     sub-gradient sign(t) flows through autodiff (do NOT use np.abs on the graph)."""
-    # TODO: implement |t| from Tensor ops so its gradient is sign(t)
-    raise NotImplementedError("_abs")
+    return t.relu() + (-t).relu()
 
 
 def l2_penalty(params: Iterable, lam: float = 1.0) -> "Stage12_Tensor":
     """L2 (ridge) penalty: returns scalar Tensor lam * 0.5 * sum(theta**2).
     Built from Tensor ops so grad lam*theta comes from backward(). lam==0 -> 0 Tensor."""
-    # TODO: implement the L2 penalty as a scalar Tensor (no hand-written grad)
-    raise NotImplementedError("l2_penalty")
+    return (lam * 0.5) * sum(((t ** 2).sum() for t in params)).sum()
 
 
 def l1_penalty(params: Iterable, lam: float = 1.0) -> "Stage12_Tensor":
     """L1 (lasso) penalty: returns scalar Tensor lam * sum(|theta|), using _abs
     so the sub-gradient lam*sign(theta) flows through backward(). lam==0 -> 0 Tensor."""
-    # TODO: implement the L1 penalty as a scalar Tensor via _abs
-    raise NotImplementedError("l1_penalty")
+    return lam * sum((_abs(t).sum() for t in params)).sum()
 
 
 def regularized_loss(
@@ -58,8 +55,7 @@ def regularized_loss(
 ) -> "Stage12_Tensor":
     """Add penalties to a stage_12 data loss: L_tilde = loss + l1*sum|theta| +
     l2*0.5*sum(theta**2). With l1==l2==0 the result must equal loss."""
-    # TODO: coerce loss to a Tensor if needed, then add the l1/l2 penalties
-    raise NotImplementedError("regularized_loss")
+    return loss + l1_penalty(params, l1) + l2_penalty(params, l2)
 
 
 def l2_grad_equals_weight_decay(
@@ -67,5 +63,4 @@ def l2_grad_equals_weight_decay(
 ) -> List[np.ndarray]:
     """Plain-NumPy reference (no autodiff): analytic L2-penalty gradient lam*p.data
     per param, equal to stage_18's coupled weight_decay term."""
-    # TODO: implement the analytic per-param L2 gradient in NumPy
-    raise NotImplementedError("l2_grad_equals_weight_decay")
+    return [lam * np.asarray(p.data, dtype=float) for p in params]
