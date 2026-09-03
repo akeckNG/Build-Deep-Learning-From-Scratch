@@ -35,10 +35,17 @@ class Mat:
     def __init__(self, data: Iterable[Iterable[Scalar]]) -> None:
         """Build self.data: List[List[Value]] from a 2-D iterable; set rows/cols
         (wrap non-`Value` entries, keep shared nodes; ValueError on ragged rows)."""
-        self.data: List[List[Stage5_Value]] = []
-        self.rows: int = 0
-        self.cols: int = 0
-        raise NotImplementedError("TODO: build a List[List[Value]] and set rows/cols")
+        self.data: List[List[Stage5_Value]] = [
+                [
+                    j if isinstance(j, Value) else Value(j)
+                    for j in i
+                ] 
+                for i in data
+            ]
+        self.rows: int = len(self.data)
+        self.cols: int = len(self.data[0])
+        for i in self:
+            assert len(i) == self.cols
 
     @property
     def shape(self) -> Tuple[int, int]:
@@ -46,11 +53,11 @@ class Mat:
 
     def __getitem__(self, i: int) -> List[Stage5_Value]:
         """Return row `i` as a list of `Value`."""
-        raise NotImplementedError("TODO")
+        return self.data[i]
 
     def __iter__(self):
         """Iterate over rows."""
-        raise NotImplementedError("TODO")
+        return iter(self.data)
 
     def __repr__(self) -> str:
         return f"Mat(shape={self.shape})"
@@ -58,31 +65,55 @@ class Mat:
     def matmul(self, other: "Mat") -> "Mat":
         """Matrix product C = self @ other; (m,k)@(k,n) -> (m,n), where
         C[i][j] = sum_p self[i][p] * other[p][j]. ValueError on inner-dim mismatch."""
-        raise NotImplementedError("TODO: build C[i][j] = sum_p self[i][p]*other[p][j]")
+        assert self.cols == other.rows
+        C = [[0 for _ in range(other.cols)] for _ in range(self.rows)]
+        for i in range(self.rows):
+            for j in range(other.cols):
+                for p in range(self.cols):
+                    C[i][j] += self[i][p] * other[p][j]
+
+        return type(self)(C)
 
     def __matmul__(self, other: "Mat") -> "Mat":
         """The `@` operator; delegates to `matmul`."""
-        raise NotImplementedError("TODO: return self.matmul(other)")
+        return self.matmul(other)
 
     def transpose(self) -> "Mat":
         """Transpose: C[j][i] = self[i][j], shape (cols, rows); reuse the same
         `Value` objects so gradient flows back to the originals."""
-        raise NotImplementedError("TODO: build transposed Mat reusing the Values")
+        C = [[None for _ in range(self.rows)] for _ in range(self.cols)]
+        for i in range(self.rows):
+            for j in range(self.cols):
+                C[j][i] = self[i][j]
+        return Mat(C)
 
     @property
     def T(self) -> "Mat":
         """Property alias for `transpose()`."""
-        raise NotImplementedError("TODO: return self.transpose()")
+        return self.transpose()
 
     def reshape(self, rows: int, cols: int) -> "Mat":
         """Reshape to (rows, cols) row-major, reusing the `Value`s; ValueError if
         the element count changes."""
-        raise NotImplementedError("TODO: row-major flatten then regroup, reusing Values")
+        if self.rows * self.cols != rows * cols:
+            raise ValueError
+        iC = 0
+        jC = 0
+        C = [[0 for _ in range(cols)] for _ in range(rows)]
+        for i in range(self.rows):
+            for j in range(self.cols):
+              C[iC][jC] = self[i][j]
+              jC+=1
+              if (jC >= cols):
+                iC+=1
+                jC=0
+        return Mat(C)
+
 
     def sum(self) -> Stage5_Value:
         """Sum of all elements as one `Value`: s = sum_{i,j} self[i][j]."""
-        raise NotImplementedError("TODO: sum every Value into one scalar")
+        return sum([sum(i) for i in self])
 
     def mean(self) -> Stage5_Value:
         """Mean of all elements as one `Value`: sum() / N, N = rows*cols."""
-        raise NotImplementedError("TODO: self.sum() scaled by 1/N")
+        return self.sum()/(self.cols*self.rows)

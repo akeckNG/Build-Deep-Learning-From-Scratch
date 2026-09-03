@@ -41,8 +41,7 @@ class Value(Stage1_Value):
 
     def __repr__(self):
         """Graph-aware debug string, e.g. ``Value(data=3.0, op='+')``."""
-        # TODO: implement repr surfacing data and _op
-        raise NotImplementedError("stage_02: implement Value.__repr__")
+        return f"Value(data={self.data}, op='{self._op}')"
 
 
 def trace(root):
@@ -52,5 +51,17 @@ def trace(root):
     edges: set of (parent, child) tuples, one per _prev link.
     Use a visited set so the DAG walk terminates on reused nodes (e.g. a * a).
     """
-    # TODO: implement the backward graph walk
-    raise NotImplementedError("stage_02: implement trace")
+    nodes = set()
+    edges = set()
+    stack = []
+    stack.append(root)
+    while stack:
+      parent = stack.pop()
+      nodes.add(parent)
+      for child in parent._prev:
+        edges.add((child, parent))
+        if child in nodes:
+          continue
+        nodes.add(child)
+        stack.append(child)
+    return nodes, edges

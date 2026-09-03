@@ -41,7 +41,12 @@ class Tensor:
     ) -> None:
         """Wrap `data` as a float64 ndarray and init an autodiff node
         (data, grad zeros, _prev, _op, _backward no-op leaf)."""
-        raise NotImplementedError("TODO: store data/grad/_prev/_op/_backward")
+        self.data = np.asarray(data.data if isinstance(data, Tensor) else data,
+                                dtype=np.float64)
+        self.grad = np.zeros(self.data.shape)
+        self._prev = _prev
+        self._op = _op
+        self._backward = lambda: None
 
     def _make_tensor(self, *args, **kwargs) -> "Tensor":
         """Build a result node of THIS instance's runtime class.
@@ -61,17 +66,19 @@ class Tensor:
         Wrap via ``self._make_tensor(...)`` (== ``type(self)(...)``) so a coerced raw
         operand becomes THIS instance's runtime class, keeping a subclass alive across
         the chain (same reason the node-building ops route through ``_make_tensor``)."""
-        raise NotImplementedError("TODO: wrap non-Tensor operands via self._make_tensor(...)")
-
+        if isinstance(other, Tensor):
+            return other
+        return self._make_tensor(other)
+    
     @classmethod
     def from_value(cls, v) -> "Tensor":
         """Bridge a stage_05 scalar `Value` into a 0-d `Tensor` leaf (lifts v.data only)."""
-        raise NotImplementedError("TODO: implement the Value -> 0-d Tensor leaf bridge")
+        return cls._make_tensor(v.data)
 
     @property
     def shape(self) -> Tuple[int, ...]:
         """Shape of the underlying data array."""
-        raise NotImplementedError("TODO: return self.data.shape")
+        return self.data.shape
 
     def reshape(self, *shape: int) -> "Tensor":
         """Return a Tensor viewing this data under a new shape. z = self.reshape(shape).
@@ -83,7 +90,14 @@ class Tensor:
         Accepts dims as varargs (`t.reshape(2, 3)`) or one tuple (`t.reshape((2, 3))`),
         and a `-1` placeholder NumPy infers (`t.reshape(-1)` flattens).
         Build the child via ``self._make_tensor(...)`` so a subclass survives the chain."""
-        raise NotImplementedError("TODO: reshape forward via self._make_tensor + _backward (reshape grad back to self.shape)")
+        if len(shape) ==1 and isinstance(shape[0], (tuple, list)):
+            shape = shape[0]
+        out = self._make_tensor(np.reshape(self.data, shape))
+        
+        def _backward():
+            self.grad = out.grad.reshape(self.shape)
+        out._backward = _backward
+        return out
 
     def transpose(self) -> "Tensor":
         """Return a Tensor viewing this data with its axes reversed (np `.T`).
